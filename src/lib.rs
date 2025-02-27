@@ -23,9 +23,10 @@ const DEFAULT_BLOCK_STREAM: usize = DEFAULT_BLOCK * 3;
 type BlowCbcDec = cbc::Decryptor<Blowfish>;
 
 
-mod lm_dw_deezer {
-	pyo3::import_exception!(lm_dw_deezer.exceptions.no_stream_data, No_Stream_Data);
+mod exceptions {
+    pyo3::import_exception!(app.utils.exceptions, NoStreamData);
 }
+
 
 
 fn _gen_blowfish_key(id_track: &str) -> Vec<u8> {
@@ -43,17 +44,13 @@ fn _gen_blowfish_key(id_track: &str) -> Vec<u8> {
 }
 
 
-fn _decrypt_track(id_track: &str, media_url: &str, save_path: &str) -> PyResult<()>{
-	let response = get(media_url).unwrap();
+fn _decrypt_track(id_track: &str, media_url: &str, save_path: &str) -> PyResult<String> {
+    let response = get(media_url).unwrap();
 
-	if response.status() == 403{
-		return Err(
-			lm_dw_deezer::No_Stream_Data::new_err(
-			(String::from(id_track), String::from(save_path))
-			)
-		);
-	}
-
+    if response.status() == 403 {
+        let message = format!("No stream data available for track {} at {}", id_track, save_path);
+        return Err(exceptions::NoStreamData::new_err(message));
+    }
 	let mut encrypted_song = response.bytes().unwrap().to_vec();
 	let mut file = File::create(save_path).unwrap();
 	let bf_key: Vec<u8> = _gen_blowfish_key(id_track);
@@ -68,15 +65,16 @@ fn _decrypt_track(id_track: &str, media_url: &str, save_path: &str) -> PyResult<
 		let _ = file.write(chunk);
 	}
 
-	Ok(())
+	Ok(save_path.to_string())
 }
 
 
 #[pyfunction]
-fn decrypt_track(py: Python<'_>, id_track: &str, media_url: &str, save_path: &str) -> PyResult<()> {
-	py.allow_threads(|| _decrypt_track(id_track, media_url, save_path))
+fn decrypt_track(py: Python<'_>, id_track: &str, media_url: &str, save_path: &str) -> PyResult<String> {
+	py.allow_threads(|| {
+		_decrypt_track(id_track, media_url, save_path)
+	})
 }
-
 
 /// A Python module implemented in Rust.
 #[pymodule]
